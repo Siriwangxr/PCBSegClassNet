@@ -95,8 +95,11 @@ def main():
     torch.manual_seed(1234)
     torch.cuda.manual_seed_all(1234)
 
-    # Specify the device (GPU0)
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    gpu_ids = opt['gpu_ids']
+    if gpu_ids:
+        device = torch.device(f"cuda:{gpu_ids[0]}" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cpu")
 
     # Dataset
     train_loader, _ = get_data(opt)

@@ -5,6 +5,8 @@
 name: PCBSegClassNet_debug
 model_type: SegmentationModel
 
+gpu_ids: [0]
+
 datasets:
   train:
     name: FPIC
