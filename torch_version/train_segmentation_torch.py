@@ -1,5 +1,7 @@
 import os
 import sys
+from PIL import Image
+from torchsummary import summary
 
 project_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_dir)
@@ -107,6 +109,8 @@ def main():
     # Initialize the model and move it to the device
     model = PCBModel(opt['train']['num_classes']).to(device)
     model.to(device)
+    print(model)
+    # summary(model, input_size=(3, 512, 512))
 
     optimizer = torch.optim.Adam(model.parameters(), lr=opt['train']['optim']['lr'], betas=(0.9, 0.9))
 
@@ -114,41 +118,57 @@ def main():
     writer = SummaryWriter(log_dir='logs/{}'.format(opt['name']))
 
     current_epoch = 0
+    current_step = 0
     with tqdm(total=max_epoch, unit='epoch') as pbar:
         while current_epoch < max_epoch+1:
             current_epoch += 1
             model.train()
-            for batch_idx, train_data in enumerate(train_loader):
-                # Move the input data to the device
-                train_data['input'] = train_data['input'].to(device)
-                train_data['gt'] = train_data['gt'].to(device)
+            with tqdm(total=len(train_loader), unit='batch', desc=f'Epoch {current_epoch}', position=0, leave=True) as batch_pbar:
+                for batch_idx, train_data in enumerate(train_loader):
+                    current_step += 1
+                    # Move the input data to the device
+                    train_data['input'] = train_data['input'].to(device)
+                    train_data['gt'] = train_data['gt'].to(device)
 
 
-                y_pred = model(train_data['input'])
-                y_true = train_data['gt']
-                loss = DISLoss(y_true, y_pred)
-                loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
+                    y_pred = model(train_data['input'])
+                    y_true = train_data['gt']
+                    loss = DISLoss(y_true, y_pred)
+                    loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
 
-                # Log the loss to TensorBoard
-                writer.add_scalar('Loss/train', loss.item(), current_epoch * len(train_loader) + batch_idx)
-                # color_images = convert_to_color_image(y_pred.detach().cpu().numpy(), color_values)
-                # writer.add_image('Color images', torch.from_numpy(color_images[0]).permute(2, 0, 1), current_epoch)
-                # gt_masks = convert_to_color_image(y_true.detach().cpu().numpy(), color_values)
-                # writer.add_image('GT_Mask', torch.from_numpy(gt_masks[0]).permute(2, 0, 1), current_epoch)
+                    # Log the loss to TensorBoard
+                    writer.add_scalar('Loss/train', loss.item(), current_step)
 
-            if current_epoch % 50 == 0:
-                checkpoint = {
-                    'epoch': current_epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss.item(),
-                }
-                save_checkpoint(checkpoint, filename=f"models/PCBSegNet_epoch_{current_epoch}.pth.tar")
 
-            # Update the progress bar
-            pbar.update(1)
+                    # save image
+                    if current_step % 1000 == 0:
+                        y_pred_indices = torch.argmax(y_pred, dim=1)
+                        y_pred_indices = y_pred_indices.cpu().numpy()
+
+                        num_classes = len(color_values)
+                        color_map = np.zeros((num_classes, 3), dtype=np.uint8)
+                        for class_index, color in color_values.items():
+                            color_map[class_index] = color
+                        segmentation_rgb = color_map[y_pred_indices]
+                        writer.add_image('Sample/Pred_mask', torch.from_numpy(segmentation_rgb[0]).permute(2, 0, 1), current_step)
+                        writer.add_image('Sample/Mask', train_data['gt_mask'][0], current_step)
+
+                    batch_pbar.update(1)
+                batch_pbar.close()
+
+                if current_epoch % 20 == 0:
+                    checkpoint = {
+                        'epoch': current_epoch,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'loss': loss.item(),
+                    }
+                    save_checkpoint(checkpoint, filename=f"ckpt/PCBSegNet_epoch_{current_epoch}.pth.tar")
+
+                # Update the progress bar
+                pbar.update(1)
 
     # Close the SummaryWriter
     writer.close()

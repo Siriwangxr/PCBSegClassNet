@@ -1,12 +1,9 @@
-# ------------------------------------------------------------------------
-# Copyright (c) 2023 CandleLabAI. All Rights Reserved.
-# ------------------------------------------------------------------------
-# general settings
-name: PCBSegClassNet_debug
+
+name: PCBSegClassNet_version_2
 model_type: SegmentationModel
 
 gpu_ids: [0]
-
+image_save: ./test_results/200
 datasets:
   train:
     name: FPIC
@@ -40,11 +37,11 @@ path:
 
 # training settings
 train:
-  max_epoch: 100
+  max_epoch: 200
   optim:
     type: Adam
     lr: 0.0001
-    betas: [0.9, 0.9]
+    betas: [0.9, 0.99]
 
   callbacks:
     modelcheckpoint:
@@ -64,7 +61,7 @@ train:
       patience: 15
       min_lr: 0.00001
 
-  num_classes: 25
+  num_classes: 26
   
   # losses
   loss:

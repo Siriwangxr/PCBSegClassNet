@@ -34,6 +34,7 @@ def gaussian_kernel(window_size, sigma):
     kernel_1d = torch.exp(-x**2 / (2 * sigma**2))
     kernel_2d = torch.outer(kernel_1d, kernel_1d)
     return kernel_2d / kernel_2d.sum()
+
 def ssim_loss(y_true, y_pred, window_size=11, sigma=1.5, c1=0.01**2, c2=0.03**2):
     # Create a 2D Gaussian kernel
     kernel = gaussian_kernel(window_size, sigma).unsqueeze(0).unsqueeze(0)

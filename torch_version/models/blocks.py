@@ -12,6 +12,7 @@ class ConvBlock(nn.Module):
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
         else:
             raise ValueError("Wrong choice of convolution type.")
+        self.relu_flag = relu
 
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True) if relu else nn.Identity()
@@ -19,10 +20,15 @@ class ConvBlock(nn.Module):
         self.upsampling = upsampling
         if upsampling:
             self.upsample = nn.Upsample(scale_factor=up_sample_size, mode='bilinear', align_corners=True)
-            self.skip_conv = None
+            self.skip_conv = nn.Conv2d(in_channels // 8, out_channels, kernel_size=1, stride=1, padding=0)
+
 
             if conv_type == "ds":
-                self.conv2 = nn.Conv2d(out_channels * 2, out_channels, kernel_size, 1, padding, groups=out_channels)
+                self.conv2 = nn.Sequential(
+                    nn.Conv2d(out_channels * 2, out_channels * 2, kernel_size=kernel_size, stride=stride,
+                              padding=padding, groups=out_channels * 2),
+                    nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, stride=1, padding=0)
+                )
             elif conv_type == "conv":
                 self.conv2 = nn.Conv2d(out_channels * 2, out_channels, kernel_size, 1, padding)
             else:
@@ -34,14 +40,13 @@ class ConvBlock(nn.Module):
     def forward(self, x, skip_layer=None):
         out = self.conv(x)
         out = self.bn(out)
-        out = self.relu(out)
+
+        if self.relu_flag:
+            out = self.relu(out)
 
         if self.upsampling:
             out = self.upsample(out)
             if skip_layer is not None:
-                if self.skip_conv is None:
-                    # Create skip_conv dynamically based on the shape of skip_layer
-                    self.skip_conv = nn.Conv2d(skip_layer.shape[1], out.shape[1], 1, 1, 0).to(skip_layer.device)
                 skip_layer = self.skip_conv(skip_layer)
                 out = torch.cat([out, skip_layer], dim=1)
             out = self.conv2(out)
@@ -54,18 +59,19 @@ class ResidualBottleneck(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, temp=3, relu=False):
         super(ResidualBottleneck, self).__init__()
 
-        self.conv1 = ConvBlock(in_channels, out_channels * temp, "conv", 1, 1, 0)
-        self.dconv = nn.Conv2d(out_channels * temp, out_channels * temp, kernel_size, stride=1, padding=kernel_size // 2)
-        self.bn = nn.BatchNorm2d(out_channels * temp)
+        self.conv1 = ConvBlock(in_channels, in_channels * temp, "conv", 1, 1, 0)
+        self.dconv = nn.Conv2d(in_channels * temp, in_channels * temp, kernel_size, stride, padding=kernel_size // 2, groups=in_channels * temp)
+        self.bn = nn.BatchNorm2d(in_channels * temp)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = ConvBlock(out_channels * temp, out_channels, "conv", 1, 1, 0, relu=False)
+        self.conv2 = ConvBlock(in_channels * temp, out_channels, "conv", 1, 1, 0, relu=False)
         self.relu_out = nn.ReLU(inplace=True) if relu else nn.Identity()
-        self.shortcut = nn.Sequential()
-        if in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=False),
-                nn.BatchNorm2d(out_channels)
-            )
+        # self.shortcut = nn.Sequential()
+        # if in_channels != out_channels:
+        #     self.shortcut = nn.Sequential(
+        #         nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=False),
+        #         nn.BatchNorm2d(out_channels)
+        #     )
+        self.relu_flag = relu
 
     def forward(self, x):
         out = self.conv1(x)
@@ -74,9 +80,9 @@ class ResidualBottleneck(nn.Module):
         out = self.relu(out)
         out = self.conv2(out)
 
-        if self.relu_out:
-            out += self.shortcut(x)
-            out = self.relu(out)
+        if self.relu_flag:
+            # out += self.shortcut(x)
+            out += x
 
         return out
 
@@ -100,18 +106,20 @@ class PyramidPoolingBlock(nn.Module):
     def __init__(self, in_channels, bin_sizes):
         super(PyramidPoolingBlock, self).__init__()
 
-        self.pooling = nn.AdaptiveAvgPool2d(16)
-
+        width = 16
+        height = 16
         self.pools = nn.ModuleList()
         for bin_size in bin_sizes:
             self.pools.append(nn.Sequential(
-                nn.AdaptiveAvgPool2d(bin_size),
-                nn.Conv2d(in_channels, 96, 3, 2, 1),
-                nn.Upsample(size=(16, 16), mode='bilinear', align_corners=True)
+                nn.AvgPool2d(
+                    kernel_size=(width // bin_size),
+                    stride=(width // bin_size)
+                ),
+                nn.Conv2d(in_channels, 64, 3, 2, 1),
+                nn.Upsample(size=(width, height), mode='bilinear', align_corners=False)
             ))
 
     def forward(self, x):
-        x = self.pooling(x)
         out = [x]
         for pool in self.pools:
             out.append(pool(x))
@@ -134,15 +142,16 @@ class TemBlock(nn.Module):
     def forward(self, x):
         conv1 = self.conv1(x)
         gap1 = self.gap1(conv1)
-        conv2 = self.relu(self.conv2(gap1))
-        conv3 = self.sigmoid(self.conv3(conv2))
+        conv2 = self.conv2(gap1)
+        conv3 = self.conv3(conv2)
         mult1 = conv1 * conv3
         # B
         add1 = conv1 + mult1
 
         gap2 = self.gap2(add1)
         cos_sim1 = F.cosine_similarity(gap2, add1, dim=1)
-        reshape1 = cos_sim1.view(cos_sim1.shape[0], -1)
+        reshape1 = cos_sim1.view(cos_sim1.shape[0], -1)  # C
+
         mat_mul1 = torch.matmul(reshape1.transpose(1, 0), reshape1)
 
         conv4 = self.conv4(add1)
@@ -159,7 +168,7 @@ class LearningModule(nn.Module):
         super(LearningModule, self).__init__()
 
         self.layer1 = ConvBlock(3, 16, "conv", 3, 2, 1, relu=True)
-        self.layer2 = ConvBlock(16, 32, "conv", 3, 2, 1, relu=True)
+        self.layer2 = ConvBlock(16, 32, "ds", 3, 2, 1, relu=True)
         self.layer3 = ConvBlock(32, 48, "conv", 3, 2, 1, relu=True)
 
     def forward(self, x):
@@ -190,11 +199,11 @@ class FusionModule(nn.Module):
 
         self.conv1 = ConvBlock(48, 96, "conv", 1, 1, 0, relu=True)
         self.upsample = nn.Upsample(scale_factor=4, mode='bilinear', align_corners=True)
-        self.dconv = nn.Conv2d(480, 96, 3, 1, 1, groups=96)
-        self.bn = nn.BatchNorm2d(96)
+        self.dconv = nn.Conv2d(352, 352, 3, 1, 1, groups=352)
+        self.bn = nn.BatchNorm2d(352)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(96, 96, 1, 1, 0)
-
+        self.conv2 = nn.Conv2d(352, 96, 1, 1, 0)
+        self.bn1 = nn.BatchNorm2d(96)
     def forward(self, learning_layer, fe_layer):
         fusion_layer1 = self.conv1(learning_layer)
         fusion_layer2 = self.upsample(fe_layer)
@@ -204,7 +213,7 @@ class FusionModule(nn.Module):
         fusion_layer2 = self.conv2(fusion_layer2)
 
         fusion_layer = fusion_layer1 + fusion_layer2
-        fusion_layer = self.bn(fusion_layer)
+        fusion_layer = self.bn1(fusion_layer)
         fusion_layer = self.relu(fusion_layer)
 
         return fusion_layer
@@ -229,7 +238,7 @@ class PCBDecoder(nn.Module):
 
         self.tem = TemBlock(96)
         self.classifier1 = ConvBlock(256, 128, "conv", 3, 1, 1, relu=True, upsampling=True, up_sample_size=2)
-        self.classifier2 = ConvBlock(128, 128, "conv", 3, 1, 1, relu=True, upsampling=True, up_sample_size=2)
+        self.classifier2 = ConvBlock(128, 128, "ds", 3, 1, 1, relu=True, upsampling=True, up_sample_size=2)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.classifier3 = nn.Sequential(
             nn.Conv2d(128, num_classes, 1, 1, 0),

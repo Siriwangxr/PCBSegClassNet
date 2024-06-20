@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 from glob import glob
 from PIL import Image
 import numpy as np
+from torchvision.transforms import ToTensor
 
 
 # class_mapping is used to encode label into one hot mapping.
@@ -62,7 +63,7 @@ color_values = {
     22: (220, 190, 255),
     23: (170, 255, 195),
     24: (255, 250, 200),
-    # 25: (0, 0, 0)
+    25: (0, 0, 0)
 }
 
 
@@ -80,6 +81,7 @@ class SegDataset(Dataset):
         self.opt = opt
         self.images_dir, self.masks_dir = get_paths(opt)
 
+
     def __len__(self):
         return len(self.images_dir)
 
@@ -94,8 +96,8 @@ class SegDataset(Dataset):
 
         mask = Image.open(mask_path).convert("RGB")
         mask = mask.resize((self.opt["img_size_h"], self.opt["img_size_w"]))
+        mask_ = ToTensor()(mask)
         mask = np.array(mask)
-
         one_hot_map = []
         for colour in list(color_values.values()):
             class_map = np.all(mask == colour, axis=-1)
@@ -103,7 +105,7 @@ class SegDataset(Dataset):
         one_hot_map = np.stack(one_hot_map, axis=-1)
         one_hot_map = torch.from_numpy(one_hot_map).permute(2, 0, 1).float()
 
-        return {'input': image, 'gt': one_hot_map}
+        return {'input': image, 'gt': one_hot_map, 'gt_mask': mask_}
 
 
 def get_data(opt):
