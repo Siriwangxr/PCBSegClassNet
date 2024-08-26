@@ -1,6 +1,7 @@
 # ------------------------------------------------------------------------
 # Copyright (c) 2023 CandleLabAI. All Rights Reserved.
 # ------------------------------------------------------------------------
+conda install -c conda-forge tensorflow-gpu
 pyyaml==6.0
 tensorflow-gpu==2.11
 albumentations

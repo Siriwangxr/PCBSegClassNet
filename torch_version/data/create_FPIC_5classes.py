@@ -1,13 +1,3 @@
-# ------------------------------------------------------------------------
-# Copyright (c) 2023 CandleLabAI. All Rights Reserved.
-# --------------------------------------------------------------------
-
-"""
-Create RGB mask from given csv annotations
-
-Usage: python create_mask.py -i ../../data/pcb_image/ -a ../../data/smd_annotation/ -id ../../data/segmentation/images -ad ../../data/segmentation/masks -cd ../../data/classification/images/
-"""
-
 from glob import glob
 import argparse
 import sys
@@ -21,44 +11,40 @@ import pandas as pd
 import numpy as np
 import cv2
 
-# color_values is used to encode mask into one hot mapping.
 color_values = {
-    "R": (255, 0, 0),
-    "C": (255, 255, 0),
-    "U": (0, 234, 255), 
-    "Q": (170, 0, 255),
-    "J": (255, 127, 0),
-    "L": (191, 255, 0),
-    "RA": (0, 149, 255),
-    "D": (106, 255, 0),
-    "RN": (0, 64, 255),
-    "TP": (237, 185, 185),
-    "IC": (185, 215, 237),
-    "P": (231, 233, 185),
-    "CR": (220, 185, 237),
-    "M": (185, 237, 224),
-    "BTN": (143, 35, 35),
-    "FB": (35, 98, 143),
-    "CRA": (143, 106, 35),
-    "SW": (107, 35, 143),
-    "T": (79, 143, 35),
-    "F": (115, 115, 115),
-    "V": (204, 204, 204),
-    "LED": (245, 130, 48),
-    "S": (220, 190, 255),
-    "QA": (170, 255, 195),
-    "JP": (255, 250, 200)
+    "R": 1,
+    "C": 2,
+    "U": 3,
+    "L": 4,
+    "IC": 3,
+    "T": 5,
 }
 
-color_values = {
-    "R": (255, 0, 0),
-    "C": (255, 255, 0),
-    "U": (0, 234, 255),
-    "L": (191, 255, 0),
-    "IC": (185, 215, 237),
-    "T": (79, 143, 35),
-}
+def resize_with_aspect_ratio(image, size, padding_color=(0, 0, 0)):
+    h, w = image.shape[:2]
+    sh, sw = size
 
+    aspect = w / h
+    if aspect > 1:  # wider
+        new_w = sw
+        new_h = int(sw / aspect)
+        pad_vert = (sh - new_h) / 2
+        pad_top = int(pad_vert)
+        pad_bot = sh - new_h - pad_top
+        pad_left = 0
+        pad_right = 0
+    else:  # taller
+        new_h = sh
+        new_w = int(sh * aspect)
+        pad_horz = (sw - new_w) / 2
+        pad_left = int(pad_horz)
+        pad_right = sw - new_w - pad_left
+        pad_top = 0
+        pad_bot = 0
+
+    resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    padded_image = cv2.copyMakeBorder(resized_image, pad_top, pad_bot, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT, value=padding_color)
+    return padded_image
 
 def prepare_data(source_image_dir,
                  source_annotation_dir,
@@ -79,12 +65,12 @@ def prepare_data(source_image_dir,
     annotations_list = glob(os.path.join(source_annotation_dir, "*.csv"))
     count = 0
     cnt = 0
-    transform = A.Compose([
-        A.augmentations.transforms.CLAHE(clip_limit=4.0,
-                                         tile_grid_size=(8, 8),
-                                         always_apply=False,
-                                         p=1.0)
-    ])
+    # transform = A.Compose([
+    #     A.augmentations.transforms.CLAHE(clip_limit=4.0,
+    #                                      tile_grid_size=(8, 8),
+    #                                      always_apply=False,
+    #                                      p=1.0)
+    # ])
     with tqdm(total=len(annotations_list)) as pbar:
         for annotation in annotations_list:
             df = pd.read_csv(annotation)
@@ -93,50 +79,71 @@ def prepare_data(source_image_dir,
                 image_name = list(df["Image File"].unique())
                 if os.path.exists(os.path.join(source_image_dir, image_name[0])):
                     img = cv2.imread(os.path.join(source_image_dir, image_name[0]))
-                    img1 = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
-                    mask = np.zeros(shape=img.shape, dtype=np.uint8)
-                    transformed = transform(image=img1, mask=mask)
-                    img1 = transformed['image']
                     vertices_list = list(df["Vertices"])
                     designator_list = list(df["Designator"])
                     for (anote, cat) in zip(vertices_list, designator_list):
                         if cat in color_values:
-                            color_code = color_values[cat]
+                            class_index = color_values[cat]
                         else:
                             continue
                         try:
                             pts = np.array(ast.literal_eval(anote))[0].reshape((-1, 1, 2))
                         except:
                             continue
-                        mask = cv2.polylines(mask, [pts], True, color_code, 2)
-                        mask = cv2.fillPoly(mask, [pts], color=color_code)
+                        # mask = cv2.polylines(mask, [pts], True, color_code, 2)
+                        # mask = cv2.fillPoly(mask, [pts], color=color_code)
                         # create crops
-                        mask_copy = np.zeros(shape=img.shape, dtype=np.uint8)
-                        mask_copy = cv2.polylines(mask_copy, [pts], True, color_code, 2)
-                        mask_copy = cv2.fillPoly(mask_copy, [pts], color=color_code)
-                        mask_copy = cv2.cvtColor(mask_copy, cv2.COLOR_BGR2GRAY)
+                        mask_copy = np.zeros(shape=img.shape[:2], dtype=np.uint8)
+                        mask_copy = cv2.polylines(mask_copy, [pts], True, 255, 2)
+                        mask_copy = cv2.fillPoly(mask_copy, [pts], color=255)
+                        # mask_copy = cv2.cvtColor(mask_copy, cv2.COLOR_BGR2GRAY)
                         contours, _ = cv2.findContours(mask_copy, cv2.RETR_EXTERNAL,
                                                        cv2.CHAIN_APPROX_NONE)
                         x,y,w,h = cv2.boundingRect(contours[0])
-                        comp_img = img[y:y+h, x:x+w]
-                        comp = cv2.resize(comp_img, (512, 512))
-                        # preds = models.predict_step(comp_img)
-                        # comp_img = np.array(preds)
+
+                        # Add a 5% margin to the bounding rectangle
+                        margin = 0.05
+                        x_margin = int(w * margin)
+                        y_margin = int(h * margin)
+                        x = max(0, x - x_margin)
+                        y = max(0, y - y_margin)
+                        w = min(img.shape[1] - x, w + 2 * x_margin)
+                        h = min(img.shape[0] - y, h + 2 * y_margin)
+
+                        crop_img = img[y:y+h, x:x+w]
+                        crop = resize_with_aspect_ratio(crop_img, (512, 512))
+
+                        # comp_mask = np.zeros((img.shape[0], img.shape[1], 6), dtype=np.uint8)
+                        # comp_mask[:, :, class_index] = mask_copy
+                        # comp_mask_resized = np.zeros((512, 512, 6), dtype=np.uint8)
+                        # for i in range(6):
+                        #     comp_mask_resized[:, :, i] = resize_with_aspect_ratio(comp_mask[:, :, i], (512, 512),
+                        #                                                           padding_color=0)
+                        mask = mask_copy[y:y+h, x:x+w]
+                        mask = resize_with_aspect_ratio(mask, (512, 512))
+                        #adding a threshold 128 to mask
+                        mask = (mask > 128).astype(np.float32)
+                        comp_mask = np.zeros((512, 512, 6), dtype=np.float32)
+                        comp_mask[:, :, class_index] = mask
+                        comp_mask[:, :, 0] = 1. - mask
+
                         if not os.path.exists(os.path.join(crops_dest_dir, cat)):
                             os.makedirs(os.path.join(crops_dest_dir, cat))
-                        cv2.imwrite(os.path.join(crops_dest_dir, cat, f"image_{cnt}.png"),
-                                    cv2.cvtColor(comp, cv2.COLOR_BGR2RGB))
+                        cv2.imwrite(os.path.join(crops_dest_dir, cat, f"image_{cnt}.png"), cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+                        if not os.path.exists(os.path.join(dest_masks_sir, cat)):
+                            os.makedirs(os.path.join(dest_masks_sir, cat))
+                        np.save(os.path.join(dest_masks_sir, cat, f"mask_{cnt}.npy"), comp_mask)
+                        visual_mask_dir = "../../../dataset/FPIC/segmentation/masks_visual_2"
+                        if not os.path.exists(os.path.join(visual_mask_dir, cat)):
+                            os.makedirs(os.path.join(visual_mask_dir, cat))
+                        cv2.imwrite(os.path.join(visual_mask_dir, cat, f"mask_{cnt}.png"), mask)
+
                         cnt += 1
 
-                    if len(np.unique(mask)) > 1:
-                        cv2.imwrite(os.path.join(dest_masks_sir, f"image_{count}.png"),
-                                    cv2.cvtColor(mask, cv2.COLOR_BGR2RGB))
-                        cv2.imwrite(os.path.join(dest_images_dir, f"image_{count}.png"),
-                                    cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
+
                     count+=1
                     pbar.update(1)
-                    # if count == 20:
-                    #     break
+
 
 def main(source_image_dir,
          source_annotation_dir,

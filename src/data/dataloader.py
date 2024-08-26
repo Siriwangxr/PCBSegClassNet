@@ -115,8 +115,10 @@ class LoadSegData:
         one_hot_map = tf.stack(one_hot_map, axis=-1)
         one_hot_map = tf.cast(one_hot_map, tf.float32)
 
+        # filename = image.split('/')[-1].split('.')[0]
+
         # return the image and the label
-        return image, one_hot_map
+        return image, one_hot_map, mask
 
     def init(self, images, masks):
         ds = tf.data.Dataset.from_tensor_slices((images, masks))

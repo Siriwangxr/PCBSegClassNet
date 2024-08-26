@@ -11,4 +11,5 @@ tensorboard, cv2, tqdm, pandas..
 
 For running the train code:
 
-Pls change dirs in pscn_seg.yml
+Pls change dirs in pscn_seg.yml 
+then run: python train_segmentation_torch.py

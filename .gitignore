@@ -87,3 +87,8 @@ target/
 
 # Mypy cache
 .mypy_cache/
+/torch_version/test_results
+/torch_version/test_results_180
+/src/predictions
+/src/results
+checkpoints/model_pytorch.tar

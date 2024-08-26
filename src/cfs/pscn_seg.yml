@@ -9,21 +9,21 @@ datasets:
   train:
     name: FPIC
     type: Segmentation
-    data_images: ../data/segmentation/train/images/
-    data_masks: ../data/segmentation/train/masks/
+    data_images: ../../dataset/FPIC/segmentation/train/images/
+    data_masks: ../../dataset/FPIC/segmentation/train/masks/
 
     img_size_h: 512
     img_size_w: 512
 
     # data loader
     use_shuffle: true
-    batch_size: 16
+    batch_size: 8
 
   val:
     name: FPIC
     type: Segmentation
-    data_images: ../data/segmentation/val/images/
-    data_masks: ../data/segmentation/val/masks/
+    data_images: ../../dataset/FPIC/segmentation/test_patches/
+    data_masks: ../../dataset/FPIC/segmentation/test_patches/
 
     img_size_h: 512
     img_size_w: 512
@@ -33,8 +33,8 @@ datasets:
 
 # path
 path:
-  checkpoint_network: ../checkpoints/best_seg.h5
-  log_file: ../logs/app.log
+  checkpoint_network: ../checkpoints/model_{epoch:03d}.h5
+  log_file: ../logs/app_trianTF_200.log
 
 # training settings
 train:

@@ -173,22 +173,22 @@ if __name__ == "__main__":
     parser.add_argument('-i',
                         "--images_dir",
                         type=str,
-                        required=True,
+                        default='../../../dataset/FPIC/segmentation/images/',
                         help="The path of directory containing input images")
     parser.add_argument('-m',
                         '--masks_dir',
                         type=str,
-                        required=True,
+                        default='../../../dataset/FPIC/segmentation/masks/',
                         help="The path of directory containing annotations")
     parser.add_argument('-cd',
                         '--crops_dir',
                         type=str,
-                        required=True,
+                        default='../../../dataset/FPIC/segmentation/crops/',
                         help="The path of directory containing crops images")
     parser.add_argument('-ps',
                         '--patch_size',
                         type=int,
-                        required=True,
+                        default=768,
                         help="The patch size for creatig patches of input data")
     args = parser.parse_args()
 

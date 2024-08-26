@@ -14,6 +14,9 @@ import argparse
 import logging
 import tensorflow as tf
 import numpy as np
+tf.config.run_functions_eagerly(True)
+gpus = tf.config.experimental.list_physical_devices('GPU')
+tf.config.experimental.set_visible_devices(gpus[3], 'GPU')
 
 from utils import dict2str, parse, get_msg
 from models import get_model
@@ -91,6 +94,8 @@ def main():
                 save_weights_only=opt["train"]["callbacks"]["modelcheckpoint"][
                     "save_weights_only"
                 ],
+                save_freq='epoch',  # Save based on epochs
+                period=50  # Save every 50 epochs
             )
         )
 

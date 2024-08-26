@@ -146,7 +146,7 @@ def main():
 
     gpu_ids = opt['gpu_ids']
     if gpu_ids:
-        device = torch.device(f"cuda:2" if torch.cuda.is_available() else "cpu")
+        device = torch.device(f"cuda:{gpu_ids[0]}" if torch.cuda.is_available() else "cpu")
     else:
         device = torch.device("cpu")
 

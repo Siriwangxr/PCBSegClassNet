@@ -23,6 +23,8 @@ import pandas as pd
 import numpy as np
 import cv2
 
+gpus = tf.config.experimental.list_physical_devices('GPU')
+tf.config.experimental.set_visible_devices(gpus[0], 'GPU')
 # color_values is used to encode mask into one hot mapping.
 color_values = {
     "R": (255, 0, 0),
@@ -77,6 +79,7 @@ def prepare_data(source_image_dir,
                                          always_apply=False,
                                          p=1.0)
     ])
+    i=0
     with tqdm(total=len(annotations_list)) as pbar:
         for annotation in annotations_list:
             df = pd.read_csv(annotation)
@@ -85,48 +88,57 @@ def prepare_data(source_image_dir,
                 image_name = list(df["Image File"].unique())
                 if os.path.exists(os.path.join(source_image_dir, image_name[0])):
                     img = cv2.imread(os.path.join(source_image_dir, image_name[0]))
-                    img1 = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
-                    mask = np.zeros(shape=img.shape, dtype=np.uint8)
-                    transformed = transform(image=img1, mask=mask)
-                    img1 = transformed['image']
-                    vertices_list = list(df["Vertices"])
-                    designator_list = list(df["Designator"])
-                    for (anote, cat) in zip(vertices_list, designator_list):
-                        if cat in color_values:
-                            color_code = color_values[cat]
-                        else:
-                            continue
-                        try:
-                            pts = np.array(ast.literal_eval(anote))[0].reshape((-1, 1, 2))
-                        except:
-                            continue
-                        mask = cv2.polylines(mask, [pts], True, color_code, 2)
-                        mask = cv2.fillPoly(mask, [pts], color=color_code)
-                        # create crops
-                        mask_copy = np.zeros(shape=img.shape, dtype=np.uint8)
-                        mask_copy = cv2.polylines(mask_copy, [pts], True, color_code, 2)
-                        mask_copy = cv2.fillPoly(mask_copy, [pts], color=color_code)
-                        mask_copy = cv2.cvtColor(mask_copy, cv2.COLOR_BGR2GRAY)
-                        contours, _ = cv2.findContours(mask_copy, cv2.RETR_EXTERNAL,
-                                                       cv2.CHAIN_APPROX_NONE)
-                        x,y,w,h = cv2.boundingRect(contours[0])
-                        comp_img = img[y:y+h, x:x+w]
-                        comp_img = tf.image.resize(comp_img, (150, 150))
-                        preds = model.predict_step(comp_img)
-                        comp_img = np.array(preds)
-                        if not os.path.exists(os.path.join(crops_dest_dir, cat)):
-                            os.makedirs(os.path.join(crops_dest_dir, cat))
-                        cv2.imwrite(os.path.join(crops_dest_dir, cat, f"image_{cnt}.png"),
-                                    cv2.cvtColor(comp_img, cv2.COLOR_BGR2RGB))
-                        cnt += 1
-
-                    if len(np.unique(mask)) > 1:
-                        cv2.imwrite(os.path.join(dest_masks_sir, f"image_{count}.png"),
-                                    cv2.cvtColor(mask, cv2.COLOR_BGR2RGB))
-                        cv2.imwrite(os.path.join(dest_images_dir, f"image_{count}.png"),
-                                    cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
-                    count+=1
+                    # img1 = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
+                    # mask = np.zeros(shape=img.shape, dtype=np.uint8)
+                    # transformed = transform(image=img1, mask=mask)
+                    # img1 = transformed['image']
+                    # vertices_list = list(df["Vertices"])
+                    # designator_list = list(df["Designator"])
+                    # for (anote, cat) in zip(vertices_list, designator_list):
+                    #     if cat in color_values:
+                    #         color_code = color_values[cat]
+                    #     else:
+                    #         continue
+                    #     try:
+                    #         pts = np.array(ast.literal_eval(anote))[0].reshape((-1, 1, 2))
+                    #     except:
+                    #         continue
+                    #     mask = cv2.polylines(mask, [pts], True, color_code, 2)
+                    #     mask = cv2.fillPoly(mask, [pts], color=color_code)
+                    #     # create crops
+                    #     mask_copy = np.zeros(shape=img.shape, dtype=np.uint8)
+                    #     mask_copy = cv2.polylines(mask_copy, [pts], True, color_code, 2)
+                    #     mask_copy = cv2.fillPoly(mask_copy, [pts], color=color_code)
+                    #     mask_copy = cv2.cvtColor(mask_copy, cv2.COLOR_BGR2GRAY)
+                    #     contours, _ = cv2.findContours(mask_copy, cv2.RETR_EXTERNAL,
+                    #                                    cv2.CHAIN_APPROX_NONE)
+                    #     x,y,w,h = cv2.boundingRect(contours[0])
+                    #     comp_img = img[y:y+h, x:x+w]
+                    #     comp_img = tf.image.resize(comp_img, (150, 150))
+                    #     preds = model.predict_step(comp_img)
+                    #     comp_img = np.array(preds)
+                    #     if not os.path.exists(os.path.join(crops_dest_dir, cat)):
+                    #         os.makedirs(os.path.join(crops_dest_dir, cat))
+                    #     cv2.imwrite(os.path.join(crops_dest_dir, cat, f"image_{cnt}.png"),
+                    #                 cv2.cvtColor(comp_img, cv2.COLOR_BGR2RGB))
+                    #     cnt += 1
+                    #
+                    # if len(np.unique(mask)) > 1:
+                    #     cv2.imwrite(os.path.join(dest_masks_sir, f"image_{count}.png"),
+                    #                 cv2.cvtColor(mask, cv2.COLOR_BGR2RGB))
+                    #     cv2.imwrite(os.path.join(dest_images_dir, f"image_{count}.png"),
+                    #                 cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
+                    # count+=1
                     pbar.update(1)
+                else:
+                    i += 1
+                    print("file not exit" + "_")
+                    print(annotation.split("/")[-1] + "\n")
+                    print(i)
+            else:
+                i+=1
+                print(annotation.split("/")[-1]+"\n")
+                print(i)
 
 def main(source_image_dir,
          source_annotation_dir,
@@ -166,27 +178,27 @@ if __name__ == "__main__":
     parser.add_argument('-i',
                         "--images_dir",
                         type=str,
-                        required=True,
+                        default="../../../dataset/FPIC/pcb_image",
                         help="The path of directory containing input images")
     parser.add_argument('-a',
                         '--annotations_dir',
                         type=str,
-                        required=True,
+                        default="../../../dataset/FPIC/smd_annotation",
                         help="The path of directory containing annotations")
     parser.add_argument('-id',
                         '--images_dest_dir',
                         type=str,
-                        required=True,
+                        default="../../../dataset/FPIC/segmentation/images",
                         help="The path of destination directory where images needs to be stored")
     parser.add_argument('-ad',
                         '--annotations_dest_dir',
                         type=str,
-                        required=True,
+                        default="../../../dataset/FPIC/segmentation/masks",
                         help="The path of destination directory where masks needs to be stored")
     parser.add_argument('-cd',
                         '--crops_dest_dir',
                         type=str,
-                        required=True,
+                        default="../../../dataset/FPIC/segmentation/crops",
                         help="The path of destination directory where crops needs to be stored")
     args = parser.parse_args()
 
